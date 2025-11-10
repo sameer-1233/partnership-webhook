@@ -1,0 +1,9 @@
+modules = ["python-3.11"]
+[agent]
+expertMode = true
+
+[nix]
+
+[[ports]]
+localPort = 8080
+externalPort = 80
