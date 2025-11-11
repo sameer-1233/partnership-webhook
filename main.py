@@ -1,48 +1,43 @@
 from flask import Flask, request, jsonify
-import re
-import sys
-import json
+import re, json
 
 app = Flask(__name__)
 
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify({"message": "Partnership Inquiry Webhook is live!"}), 200
-
+    return jsonify({"message": "Partnership Inquiry Webhook is live!"})
 
 @app.route('/', methods=['POST'])
 def extract_company_data():
     try:
-        # Print raw request data for debugging
-        raw_data = request.data.decode('utf-8')
-        print("\n==========================")
-        print("📥 RAW REQUEST BODY:", raw_data)
-        print("==========================\n")
+        # Try JSON first
+        data = request.get_json(silent=True)
 
-        # Try to parse JSON safely
-        try:
-            data = json.loads(raw_data)
-        except Exception as e:
-            print("❌ Could not parse JSON:", e)
-            return jsonify({"error": "Invalid JSON", "raw_data": raw_data}), 400
+        # If not JSON, try form data (Zapier sometimes sends form-encoded)
+        if not data:
+            raw_data = request.data.decode("utf-8")
+            print("📥 Raw request (non-JSON):", raw_data)
+            try:
+                data = json.loads(raw_data)
+            except:
+                # Convert form-encoded format into dict
+                data = dict(request.form)
+        
+        print("📥 Final parsed data:", data)
 
-        print("✅ PARSED JSON:", data)
+        # Extract text from possible keys
+        email_text = (
+            data.get("Body")
+            or data.get("body")
+            or data.get("plain")
+            or data.get("snippet")
+            or data.get("text")
+            or ""
+        )
 
-        # Try multiple possible keys for email text
-        possible_keys = ["Body", "body", "plain", "snippet", "text", "message"]
-        email_text = ""
-        for key in possible_keys:
-            if key in data:
-                email_text = data[key]
-                break
+        print("📩 Email text:", email_text)
 
-        if not email_text:
-            print("⚠️  No email text found, dumping keys ->", list(data.keys()))
-            return jsonify({"error": "Missing email text", "available_keys": list(data.keys())}), 400
-
-        print("📩 EMAIL TEXT:", email_text)
-
-        # --- Regex Extraction Logic ---
+        # Regex extraction logic
         company_match = re.search(r'([A-Za-z0-9&\s]+(?:Pvt|Ltd|LLP|Inc|Company|Corporation)[A-Za-z\s]*)', email_text)
         service_match = re.search(r'offer[s]? (.+?)(?: in| at| for|\.|$)', email_text, re.IGNORECASE)
         city_match = re.search(r'in ([A-Za-z\s]+)', email_text)
@@ -61,14 +56,15 @@ def extract_company_data():
             "Status": "Received"
         }
 
-        print("✅ EXTRACTED:", extracted)
+        print("✅ Extracted Data:", extracted)
         return jsonify(extracted), 200
 
     except Exception as e:
-        print("❌ ERROR:", e)
-        return jsonify({"error": str(e)}), 500
-
+        print("❌ Error:", e)
+        return jsonify({"error": str(e)}), 400
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
 
+        
+        
