@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify
 import re
+import sys
+import json
 
 app = Flask(__name__)
 
@@ -11,24 +13,36 @@ def home():
 @app.route('/', methods=['POST'])
 def extract_company_data():
     try:
-        data = request.get_json(force=True)
-        print("✅ RAW DATA:", data)
+        # Print raw request data for debugging
+        raw_data = request.data.decode('utf-8')
+        print("\n==========================")
+        print("📥 RAW REQUEST BODY:", raw_data)
+        print("==========================\n")
 
-        # Try to detect the email body field (Zapier may send various keys)
-        possible_keys = ["Body", "body", "plain", "snippet", "message", "text"]
+        # Try to parse JSON safely
+        try:
+            data = json.loads(raw_data)
+        except Exception as e:
+            print("❌ Could not parse JSON:", e)
+            return jsonify({"error": "Invalid JSON", "raw_data": raw_data}), 400
+
+        print("✅ PARSED JSON:", data)
+
+        # Try multiple possible keys for email text
+        possible_keys = ["Body", "body", "plain", "snippet", "text", "message"]
         email_text = ""
         for key in possible_keys:
             if key in data:
                 email_text = data[key]
                 break
 
+        if not email_text:
+            print("⚠️  No email text found, dumping keys ->", list(data.keys()))
+            return jsonify({"error": "Missing email text", "available_keys": list(data.keys())}), 400
+
         print("📩 EMAIL TEXT:", email_text)
 
-        if not email_text.strip():
-            print("⚠️  Empty email body received from Zapier")
-            return jsonify({"error": "Missing 'Body' in request"}), 400
-
-        # Regex extraction
+        # --- Regex Extraction Logic ---
         company_match = re.search(r'([A-Za-z0-9&\s]+(?:Pvt|Ltd|LLP|Inc|Company|Corporation)[A-Za-z\s]*)', email_text)
         service_match = re.search(r'offer[s]? (.+?)(?: in| at| for|\.|$)', email_text, re.IGNORECASE)
         city_match = re.search(r'in ([A-Za-z\s]+)', email_text)
@@ -57,6 +71,4 @@ def extract_company_data():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
-
-     
 
