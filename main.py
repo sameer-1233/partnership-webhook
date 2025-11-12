@@ -8,46 +8,47 @@ app = Flask(__name__)
 def home():
     return jsonify({"message": "Partnership Inquiry Webhook is live!"})
 
+
 @app.route('/', methods=['POST'])
 def extract_company_data():
     try:
-        # Try parsing as JSON
+        # ✅ Step 1: Capture everything Zapier sends
+        raw_body = request.get_data(as_text=True)
+        print("\n📥 RAW REQUEST BODY:", raw_body)
+
+        # ✅ Step 2: Try to parse JSON, else fallback to form or raw text
         try:
             data = request.get_json(force=True)
+            print("📦 Parsed JSON:", data)
         except Exception:
-            # Fallback if Zapier sends form data or text
-            raw_data = request.data.decode('utf-8')
+            # Try to decode as form
             try:
-                data = json.loads(raw_data)
-            except:
-                data = {"raw": raw_data}
+                data = request.form.to_dict()
+                print("📑 Parsed FORM:", data)
+            except Exception:
+                data = {"raw": raw_body}
 
-        print("📥 RAW REQUEST BODY:", data)
-
-        # 🔍 Smart auto-detection of content field
+        # ✅ Step 3: Find the main text field (works with Gmail & Zapier)
         email_text = (
-            data.get("Body") or
-            data.get("body") or
-            data.get("plain") or
-            data.get("snippet") or
-            data.get("text") or
-            data.get("raw") or
-            ""
+            data.get("Body")
+            or data.get("body")
+            or data.get("plain")
+            or data.get("text")
+            or data.get("snippet")
+            or data.get("raw")
+            or raw_body
         )
+        print("📩 Email text detected:", email_text[:300])
 
-        print("📩 EXTRACTED EMAIL TEXT:", email_text[:300])
-
-        # --- Extraction Logic ---
-        company_match = re.search(
-            r'([A-Za-z0-9&\s]+(?:Pvt|Ltd|LLP|Inc|Company|Corporation)[A-Za-z\s]*)',
-            email_text)
+        # ✅ Step 4: Extract structured info
+        company_match = re.search(r'([A-Za-z0-9&\s]+(?:Pvt|Ltd|LLP|Inc|Company|Corporation)[A-Za-z\s]*)', email_text)
         service_match = re.search(r'offer[s]? (.+?)(?: in| at| for|\.|$)', email_text, re.IGNORECASE)
         city_match = re.search(r'in ([A-Za-z\s]+)', email_text)
         contact_match = re.search(r'Contact[:\-]?\s*([A-Za-z\s]+)', email_text)
         phone_match = re.search(r'(\+?\d[\d\s\-]{7,15})', email_text)
         email_match = re.search(r'[\w\.-]+@[\w\.-]+', email_text)
 
-        # --- Format Data ---
+        # ✅ Step 5: Format output for Zapier → Google Sheets
         extracted = {
             "Company Name": company_match.group(1).strip() if company_match else "Not Found",
             "Service Offered": service_match.group(1).strip() if service_match else "Not Found",
@@ -59,8 +60,7 @@ def extract_company_data():
             "Status": "Received"
         }
 
-        print("✅ FINAL EXTRACTED DATA:", extracted)
-
+        print("✅ FINAL EXTRACTED DATA:", json.dumps(extracted, indent=2))
         return jsonify(extracted), 200
 
     except Exception as e:
