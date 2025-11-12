@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
-import re, json
+import re
+import json
 
 app = Flask(__name__)
 
@@ -10,41 +11,43 @@ def home():
 @app.route('/', methods=['POST'])
 def extract_company_data():
     try:
-        # Try JSON first
-        data = request.get_json(silent=True)
-
-        # If not JSON, try form data (Zapier sometimes sends form-encoded)
-        if not data:
-            raw_data = request.data.decode("utf-8")
-            print("📥 Raw request (non-JSON):", raw_data)
+        # Try parsing as JSON
+        try:
+            data = request.get_json(force=True)
+        except Exception:
+            # Fallback if Zapier sends form data or text
+            raw_data = request.data.decode('utf-8')
             try:
                 data = json.loads(raw_data)
             except:
-                # Convert form-encoded format into dict
-                data = dict(request.form)
-        
-        print("📥 Final parsed data:", data)
+                data = {"raw": raw_data}
 
-        # Extract text from possible keys
+        print("📥 RAW REQUEST BODY:", data)
+
+        # 🔍 Smart auto-detection of content field
         email_text = (
-            data.get("Body")
-            or data.get("body")
-            or data.get("plain")
-            or data.get("snippet")
-            or data.get("text")
-            or ""
+            data.get("Body") or
+            data.get("body") or
+            data.get("plain") or
+            data.get("snippet") or
+            data.get("text") or
+            data.get("raw") or
+            ""
         )
 
-        print("📩 Email text:", email_text)
+        print("📩 EXTRACTED EMAIL TEXT:", email_text[:300])
 
-        # Regex extraction logic
-        company_match = re.search(r'([A-Za-z0-9&\s]+(?:Pvt|Ltd|LLP|Inc|Company|Corporation)[A-Za-z\s]*)', email_text)
+        # --- Extraction Logic ---
+        company_match = re.search(
+            r'([A-Za-z0-9&\s]+(?:Pvt|Ltd|LLP|Inc|Company|Corporation)[A-Za-z\s]*)',
+            email_text)
         service_match = re.search(r'offer[s]? (.+?)(?: in| at| for|\.|$)', email_text, re.IGNORECASE)
         city_match = re.search(r'in ([A-Za-z\s]+)', email_text)
         contact_match = re.search(r'Contact[:\-]?\s*([A-Za-z\s]+)', email_text)
         phone_match = re.search(r'(\+?\d[\d\s\-]{7,15})', email_text)
         email_match = re.search(r'[\w\.-]+@[\w\.-]+', email_text)
 
+        # --- Format Data ---
         extracted = {
             "Company Name": company_match.group(1).strip() if company_match else "Not Found",
             "Service Offered": service_match.group(1).strip() if service_match else "Not Found",
@@ -56,12 +59,14 @@ def extract_company_data():
             "Status": "Received"
         }
 
-        print("✅ Extracted Data:", extracted)
+        print("✅ FINAL EXTRACTED DATA:", extracted)
+
         return jsonify(extracted), 200
 
     except Exception as e:
-        print("❌ Error:", e)
+        print("❌ ERROR:", e)
         return jsonify({"error": str(e)}), 400
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
