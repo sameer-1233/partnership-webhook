@@ -1,12 +1,8 @@
-from flask import Flask, request
-import json
-import re
+from flask import Flask, request, jsonify
+import json, re
 
 app = Flask(__name__)
 
-# -----------------------------
-# Helper Function
-# -----------------------------
 def extract_company_data(body_text):
     extracted = {
         "Company Name": "Not Found",
@@ -19,74 +15,57 @@ def extract_company_data(body_text):
         "Status": "Received"
     }
 
-    # Regex patterns
-    company_match = re.search(r"We are\s+([A-Za-z0-9&\s]+)", body_text, re.I)
-    service_match = re.search(r"offer\s+([A-Za-z\s]+)", body_text, re.I)
-    city_match = re.search(r"in\s+([A-Za-z\s]+)", body_text, re.I)
-    contact_match = re.search(r"Contact[:\-]?\s*([A-Za-z\s]+)", body_text, re.I)
-    phone_match = re.search(r"(\+?\d[\d\s\-]{7,15})", body_text)
-    email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", body_text)
+    # Basic regex rules
+    company = re.search(r"We are\s+([A-Za-z0-9&\s]+)", body_text, re.I)
+    service = re.search(r"offer\s+([A-Za-z\s]+)", body_text, re.I)
+    city = re.search(r"in\s+([A-Za-z\s]+)", body_text, re.I)
+    contact = re.search(r"Contact[:\-]?\s*([A-Za-z\s]+)", body_text, re.I)
+    phone = re.search(r"(\+?\d[\d\s\-]{7,15})", body_text)
+    email = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", body_text)
 
-    if company_match: extracted["Company Name"] = company_match.group(1).strip()
-    if service_match: extracted["Service Offered"] = service_match.group(1).strip()
-    if city_match: extracted["City"] = city_match.group(1).strip()
-    if contact_match: extracted["Contact Person"] = contact_match.group(1).strip()
-    if phone_match: extracted["Phone"] = phone_match.group(1).strip()
-    if email_match: extracted["Email"] = email_match.group(0).strip()
+    if company: extracted["Company Name"] = company.group(1).strip()
+    if service: extracted["Service Offered"] = service.group(1).strip()
+    if city: extracted["City"] = city.group(1).strip()
+    if contact: extracted["Contact Person"] = contact.group(1).strip()
+    if phone: extracted["Phone"] = phone.group(1).strip()
+    if email: extracted["Email"] = email.group(0).strip()
 
     return extracted
 
 
-# -----------------------------
-# Webhook Endpoint
-# -----------------------------
 @app.route('/', methods=['POST'])
-def handle_webhook():
+def webhook():
     try:
         data = request.get_json(force=True, silent=True) or {}
-        print("📥 RAW REQUEST BODY:", data)
+        print("📥 RAW REQUEST:", data)
 
-        # Handle the “Data” string from Zapier
-        if isinstance(data, dict) and "Data" in data and isinstance(data["Data"], str):
+        # Handle Zapier's "Data" JSON wrapper
+        if "Data" in data and isinstance(data["Data"], str):
             try:
-                inner_data = json.loads(data["Data"])  # Parse the stringified JSON
-                print("🔍 Parsed inner Data JSON:", inner_data)
-                data = inner_data
-            except json.JSONDecodeError:
-                print("⚠️ Could not parse inner JSON string. Using as-is.")
+                data = json.loads(data["Data"])
+                print("🔍 Parsed inner JSON:", data)
+            except Exception as e:
+                print("⚠️ Inner JSON parse failed:", e)
 
-        # Pick text from any likely key
-        possible_keys = ["Body", "body", "plain", "bodyPlain", "snippet", "text"]
-        body_text = ""
-        for key in possible_keys:
-            if key in data and isinstance(data[key], str):
-                body_text = data[key]
-                break
-
-        if not body_text:
-            body_text = str(data)
-
+        # Extract body text from likely keys
+        body_text = data.get("Body") or data.get("body") or str(data)
         extracted = extract_company_data(body_text)
-        print("✅ FINAL EXTRACTED DATA:", extracted)
+        print("✅ Extracted Data:", extracted)
 
-        # Return FLAT JSON for Zapier
-        return extracted, 200
+        # Return in Zapier-compatible format
+        response = jsonify(extracted)
+        response.headers["Content-Type"] = "application/json"
+        return response, 200
 
     except Exception as e:
         print("❌ ERROR:", e)
-        return {"error": str(e)}, 500
+        return jsonify({"error": str(e)}), 500
 
 
-# -----------------------------
-# Health Route
-# -----------------------------
 @app.route('/', methods=['GET'])
 def home():
-    return {"message": "Partnership Inquiry Webhook is live!"}, 200
+    return jsonify({"message": "Partnership Inquiry Webhook is live!"})
 
 
-# -----------------------------
-# Runner
-# -----------------------------
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
