@@ -1,17 +1,13 @@
 from flask import Flask, request
+import json
 import re
 
 app = Flask(__name__)
 
 # -----------------------------
-# Helper Function: Extract Data
+# Helper Function
 # -----------------------------
 def extract_company_data(body_text):
-    """
-    Extracts company info (company name, service, city, contact person, phone, etc.)
-    from an email body text. You can adjust regex patterns based on real examples.
-    """
-
     extracted = {
         "Company Name": "Not Found",
         "Service Offered": "Not Found",
@@ -24,22 +20,13 @@ def extract_company_data(body_text):
     }
 
     # Regex patterns
-    company_match = re.search(
-        r"(?:Company|Organisation|Firm|Business)\s*[:\-]\s*([A-Za-z0-9&\s\.]+)",
-        body_text, re.IGNORECASE)
-    service_match = re.search(
-        r"(?:Service Offered|We offer|Service)\s*[:\-]?\s*([A-Za-z\s]+)",
-        body_text, re.IGNORECASE)
-    city_match = re.search(
-        r"(?:City|Location|based in|in)\s*[:\-]?\s*([A-Za-z\s]+)",
-        body_text, re.IGNORECASE)
-    contact_match = re.search(
-        r"(?:Contact Person|Name|Contact)\s*[:\-]?\s*([A-Za-z\s]+)",
-        body_text, re.IGNORECASE)
+    company_match = re.search(r"We are\s+([A-Za-z0-9&\s]+)", body_text, re.I)
+    service_match = re.search(r"offer\s+([A-Za-z\s]+)", body_text, re.I)
+    city_match = re.search(r"in\s+([A-Za-z\s]+)", body_text, re.I)
+    contact_match = re.search(r"Contact[:\-]?\s*([A-Za-z\s]+)", body_text, re.I)
     phone_match = re.search(r"(\+?\d[\d\s\-]{7,15})", body_text)
     email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", body_text)
 
-    # Assign extracted matches
     if company_match: extracted["Company Name"] = company_match.group(1).strip()
     if service_match: extracted["Service Offered"] = service_match.group(1).strip()
     if city_match: extracted["City"] = city_match.group(1).strip()
@@ -51,16 +38,24 @@ def extract_company_data(body_text):
 
 
 # -----------------------------
-# POST Route: Zapier → Flask
+# Webhook Endpoint
 # -----------------------------
 @app.route('/', methods=['POST'])
 def handle_webhook():
     try:
-        # Parse incoming JSON
         data = request.get_json(force=True, silent=True) or {}
         print("📥 RAW REQUEST BODY:", data)
 
-        # Extract possible fields from Gmail/Zapier payload
+        # Handle the “Data” string from Zapier
+        if isinstance(data, dict) and "Data" in data and isinstance(data["Data"], str):
+            try:
+                inner_data = json.loads(data["Data"])  # Parse the stringified JSON
+                print("🔍 Parsed inner Data JSON:", inner_data)
+                data = inner_data
+            except json.JSONDecodeError:
+                print("⚠️ Could not parse inner JSON string. Using as-is.")
+
+        # Pick text from any likely key
         possible_keys = ["Body", "body", "plain", "bodyPlain", "snippet", "text"]
         body_text = ""
         for key in possible_keys:
@@ -71,11 +66,10 @@ def handle_webhook():
         if not body_text:
             body_text = str(data)
 
-        # Run extraction logic
         extracted = extract_company_data(body_text)
         print("✅ FINAL EXTRACTED DATA:", extracted)
 
-        # Return FLAT JSON (Zapier reads these as top-level fields)
+        # Return FLAT JSON for Zapier
         return extracted, 200
 
     except Exception as e:
@@ -84,7 +78,7 @@ def handle_webhook():
 
 
 # -----------------------------
-# GET Route: Health Check
+# Health Route
 # -----------------------------
 @app.route('/', methods=['GET'])
 def home():
@@ -92,7 +86,7 @@ def home():
 
 
 # -----------------------------
-# App Runner
+# Runner
 # -----------------------------
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
