@@ -1,14 +1,14 @@
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify
 import json, re
 
 app = Flask(__name__)
 
 def extract_company_data(body_text):
     extracted = {
-        "Company Name": "Not Found",
-        "Service Offered": "Not Found",
+        "Company_Name": "Not Found",
+        "Service_Offered": "Not Found",
         "City": "Not Found",
-        "Contact Person": "Not Found",
+        "Contact_Person": "Not Found",
         "Email": "Not Found",
         "Phone": "Not Found",
         "Summary": body_text[:200] + "..." if len(body_text) > 200 else body_text,
@@ -22,10 +22,10 @@ def extract_company_data(body_text):
     phone = re.search(r"(\+?\d[\d\s\-]{7,15})", body_text)
     email = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", body_text)
 
-    if company: extracted["Company Name"] = company.group(1).strip()
-    if service: extracted["Service Offered"] = service.group(1).strip()
+    if company: extracted["Company_Name"] = company.group(1).strip()
+    if service: extracted["Service_Offered"] = service.group(1).strip()
     if city: extracted["City"] = city.group(1).strip()
-    if contact: extracted["Contact Person"] = contact.group(1).strip()
+    if contact: extracted["Contact_Person"] = contact.group(1).strip()
     if phone: extracted["Phone"] = phone.group(1).strip()
     if email: extracted["Email"] = email.group(0).strip()
 
@@ -38,6 +38,7 @@ def handle_webhook():
         data = request.get_json(force=True, silent=True) or {}
         print("📥 RAW REQUEST BODY:", data)
 
+        # handle Zapier “Data” wrapping
         if "Data" in data and isinstance(data["Data"], str):
             try:
                 data = json.loads(data["Data"])
@@ -46,12 +47,15 @@ def handle_webhook():
 
         body_text = data.get("Body") or data.get("body") or ""
         extracted = extract_company_data(body_text)
+
         print("✅ FINAL EXTRACTED DATA:", extracted)
 
-        # ✅ Force correct Zapier parsing with plain JSON and JSON header
-        response = make_response(json.dumps(extracted), 200)
-        response.headers["Content-Type"] = "application/json; charset=utf-8"
-        response.headers["Cache-Control"] = "no-store"
+        # 🚨 Zapier-safe response structure
+        #  -> return {"bundle": [{"key": "value"}]} makes Zapier flatten automatically
+        zapier_response = {"bundle": [extracted]}
+
+        response = jsonify(zapier_response)
+        response.headers["Content-Type"] = "application/json"
         return response
 
     except Exception as e:
@@ -61,7 +65,7 @@ def handle_webhook():
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"message": "Partnership Inquiry Webhook is live!"})
+    return jsonify({"message": "Webhook is live and ready!"})
 
 
 if __name__ == "__main__":
