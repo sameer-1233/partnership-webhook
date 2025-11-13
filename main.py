@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 import json, re
 
 app = Flask(__name__)
@@ -15,7 +15,6 @@ def extract_company_data(body_text):
         "Status": "Received"
     }
 
-    # --- Extract details ---
     company = re.search(r"We are\s+([A-Za-z0-9&\s]+)", body_text, re.I)
     service = re.search(r"offer\s+([A-Za-z\s]+)", body_text, re.I)
     city = re.search(r"in\s+([A-Za-z\s]+)", body_text, re.I)
@@ -37,9 +36,8 @@ def extract_company_data(body_text):
 def handle_webhook():
     try:
         data = request.get_json(force=True, silent=True) or {}
-        print("📥 RAW REQUEST:", data)
+        print("📥 RAW REQUEST BODY:", data)
 
-        # handle nested Zapier wrapper
         if "Data" in data and isinstance(data["Data"], str):
             try:
                 data = json.loads(data["Data"])
@@ -48,23 +46,13 @@ def handle_webhook():
 
         body_text = data.get("Body") or data.get("body") or ""
         extracted = extract_company_data(body_text)
-        print("✅ FINAL EXTRACTED:", extracted)
+        print("✅ FINAL EXTRACTED DATA:", extracted)
 
-        # ✅ Force Zapier to recognize each field explicitly
-        return jsonify({
-            "response": [
-                {
-                    "Company Name": extracted["Company Name"],
-                    "Service Offered": extracted["Service Offered"],
-                    "City": extracted["City"],
-                    "Contact Person": extracted["Contact Person"],
-                    "Email": extracted["Email"],
-                    "Phone": extracted["Phone"],
-                    "Summary": extracted["Summary"],
-                    "Status": extracted["Status"]
-                }
-            ]
-        })
+        # ✅ Force correct Zapier parsing with plain JSON and JSON header
+        response = make_response(json.dumps(extracted), 200)
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     except Exception as e:
         print("❌ ERROR:", e)
@@ -73,7 +61,7 @@ def handle_webhook():
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"message": "Webhook live"})
+    return jsonify({"message": "Partnership Inquiry Webhook is live!"})
 
 
 if __name__ == "__main__":
