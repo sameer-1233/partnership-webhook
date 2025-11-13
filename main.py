@@ -15,7 +15,7 @@ def extract_company_data(body_text):
         "Status": "Received"
     }
 
-    # Basic regex rules
+    # --- Extract data using regex ---
     company = re.search(r"We are\s+([A-Za-z0-9&\s]+)", body_text, re.I)
     service = re.search(r"offer\s+([A-Za-z\s]+)", body_text, re.I)
     city = re.search(r"in\s+([A-Za-z\s]+)", body_text, re.I)
@@ -34,28 +34,24 @@ def extract_company_data(body_text):
 
 
 @app.route('/', methods=['POST'])
-def webhook():
+def handle_webhook():
     try:
         data = request.get_json(force=True, silent=True) or {}
         print("📥 RAW REQUEST:", data)
 
-        # Handle Zapier's "Data" JSON wrapper
+        # Handle possible JSON nesting
         if "Data" in data and isinstance(data["Data"], str):
             try:
                 data = json.loads(data["Data"])
-                print("🔍 Parsed inner JSON:", data)
-            except Exception as e:
-                print("⚠️ Inner JSON parse failed:", e)
+            except:
+                pass
 
-        # Extract body text from likely keys
-        body_text = data.get("Body") or data.get("body") or str(data)
+        body_text = data.get("Body") or data.get("body") or ""
         extracted = extract_company_data(body_text)
-        print("✅ Extracted Data:", extracted)
+        print("✅ FINAL EXTRACTED DATA:", extracted)
 
-        # Return in Zapier-compatible format
-        response = jsonify(extracted)
-        response.headers["Content-Type"] = "application/json"
-        return response, 200
+        # Return ACTUAL JSON object (not a string)
+        return jsonify(extracted)
 
     except Exception as e:
         print("❌ ERROR:", e)
