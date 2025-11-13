@@ -61,7 +61,18 @@ def extract_company_data():
         }
 
         print("✅ FINAL EXTRACTED DATA:", json.dumps(extracted, indent=2))
-        return jsonify(extracted), 200
+        from flask import make_response, jsonify
+
+@app.route('/', methods=['POST'])
+def handle_webhook():
+    data = request.get_json(force=True)
+    extracted = extract_company_data(data.get("Body", ""))
+
+    print("✅ FINAL EXTRACTED DATA:", extracted)
+    response = make_response(jsonify(extracted), 200)
+    response.headers["Content-Type"] = "application/json"
+    return response
+
 
     except Exception as e:
         print("❌ ERROR:", e)
