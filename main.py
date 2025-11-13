@@ -38,23 +38,20 @@ def handle_webhook():
         data = request.get_json(force=True, silent=True) or {}
         print("📥 RAW REQUEST BODY:", data)
 
-        # handle nested Data wrapper
+        # Some versions of Zapier wrap the payload inside 'Data'
         if "Data" in data and isinstance(data["Data"], str):
             try:
                 data = json.loads(data["Data"])
-            except Exception as e:
-                print("⚠️ Could not parse Data:", e)
+            except:
+                pass
 
         body_text = data.get("Body") or data.get("body") or ""
         extracted = extract_company_data(body_text)
+
         print("✅ FINAL EXTRACTED DATA:", extracted)
 
-        # ✅ Zapier requires a top-level JSON object with primitive fields
-        # Returning inside "response" helps Zapier unpack correctly
-        return jsonify({
-            "response": extracted,
-            **extracted
-        })
+        # ✅ Return FLAT JSON that Zapier unpacks automatically
+        return jsonify(extracted)
 
     except Exception as e:
         print("❌ ERROR:", e)
@@ -63,7 +60,7 @@ def handle_webhook():
 
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify({"message": "Webhook live"})
+    return jsonify({"message": "Partnership Inquiry Webhook is live!"})
 
 
 if __name__ == '__main__':
