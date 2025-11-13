@@ -15,6 +15,7 @@ def extract_company_data(body_text):
         "Status": "Received"
     }
 
+    # --- Extract details ---
     company = re.search(r"We are\s+([A-Za-z0-9&\s]+)", body_text, re.I)
     service = re.search(r"offer\s+([A-Za-z\s]+)", body_text, re.I)
     city = re.search(r"in\s+([A-Za-z\s]+)", body_text, re.I)
@@ -32,13 +33,13 @@ def extract_company_data(body_text):
     return extracted
 
 
-@app.route('/', methods=['POST'])
+@app.route("/", methods=["POST"])
 def handle_webhook():
     try:
         data = request.get_json(force=True, silent=True) or {}
-        print("📥 RAW REQUEST BODY:", data)
+        print("📥 RAW REQUEST:", data)
 
-        # Some versions of Zapier wrap the payload inside 'Data'
+        # handle nested Zapier wrapper
         if "Data" in data and isinstance(data["Data"], str):
             try:
                 data = json.loads(data["Data"])
@@ -47,21 +48,33 @@ def handle_webhook():
 
         body_text = data.get("Body") or data.get("body") or ""
         extracted = extract_company_data(body_text)
+        print("✅ FINAL EXTRACTED:", extracted)
 
-        print("✅ FINAL EXTRACTED DATA:", extracted)
-
-        # ✅ Return FLAT JSON that Zapier unpacks automatically
-        return jsonify(extracted)
+        # ✅ Force Zapier to recognize each field explicitly
+        return jsonify({
+            "response": [
+                {
+                    "Company Name": extracted["Company Name"],
+                    "Service Offered": extracted["Service Offered"],
+                    "City": extracted["City"],
+                    "Contact Person": extracted["Contact Person"],
+                    "Email": extracted["Email"],
+                    "Phone": extracted["Phone"],
+                    "Summary": extracted["Summary"],
+                    "Status": extracted["Status"]
+                }
+            ]
+        })
 
     except Exception as e:
         print("❌ ERROR:", e)
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/', methods=['GET'])
+@app.route("/", methods=["GET"])
 def home():
-    return jsonify({"message": "Partnership Inquiry Webhook is live!"})
+    return jsonify({"message": "Webhook live"})
 
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
